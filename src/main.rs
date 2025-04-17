@@ -82,10 +82,8 @@ where
 
     if let Some(format) = image.format() {
         if FORMATS.contains(&format) {
-            if verify {
-                if let Err(_) = image.decode() {
-                    return Ok(None);
-                }
+            if verify && image.decode().is_err() {
+                return Ok(None);
             }
 
             return Ok(Some(ImageInfo {
@@ -185,7 +183,7 @@ where
     // Check directory for images, non images and excluded files.
     let (imgs, non_imgs, excluded) = check_dir(dir, verify)?;
 
-    if non_imgs.len() > 0 {
+    if !non_imgs.is_empty() {
         println!("Found {} non-images/unsupported images...", non_imgs.len());
         for path in non_imgs {
             println!("\t{}", path.display());
@@ -203,23 +201,21 @@ where
     for (idx, img) in imgs.iter().enumerate() {
         let buf = fs::read(&img.path)
             .with_context(|| format!("Failed to read file {}", img.path.display()))?;
-        let file_name;
-        if no_rename {
-            file_name = img
-                .path
+        let file_name = if no_rename {
+            img.path
                 .file_name()
                 .unwrap_or_default()
                 .to_str()
                 .unwrap_or_default()
-                .to_string();
+                .to_string()
         } else {
-            file_name = format!(
+            format!(
                 "{:0pad$}.{}",
                 idx + 1,
                 img.format.extensions_str()[0],
                 pad = max(imgs.len().to_string().len(), 2)
-            );
-        }
+            )
+        };
         zip.start_file(&file_name, options)
             .with_context(|| format!("Failed to add {} to {}", file_name, zip_path.display()))?;
         zip.write_all(&buf)
