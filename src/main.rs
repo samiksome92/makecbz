@@ -22,6 +22,10 @@ const FORMATS: [ImageFormat; 4] = [
 const EXCLUDED_FILES: [&str; 1] = ["ComicInfo.xml"];
 
 #[derive(Parser, Debug)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "Bools represent command line switches"
+)]
 #[command(version, about, long_about=None)]
 struct Args {
     #[arg(required = true, help = "Directory(s) containing images")]
@@ -66,7 +70,7 @@ where
 
 /// Checks if a file is a valid image.
 ///
-/// If it is a supported image, returns an ImageInfo with the path and guessed format, else returns None. If `verify`
+/// If it is a supported image, returns an `ImageInfo` with the path and guessed format, else returns None. If `verify`
 /// is true the image is decoded to ensure there is no corruption. Propagates any error with added context.
 fn check_file<P>(file: P, verify: bool) -> Result<Option<ImageInfo>>
 where
@@ -153,14 +157,14 @@ where
 /// All image files are renamed to a numeric format unless `no_rename` is true. If `delete` is true `dir` is deleted
 /// after creating the cbz. Images can be verified using `verified`. Unless `overwrite` is true if the output file
 /// exists the user is prompted for overwriting it. Errors are propagated.
-fn create_cbz<P>(dir: P, no_rename: bool, delete: bool, verify: bool, overwrite: bool) -> Result<()>
+fn create_cbz<P>(dir: P, args: &Args) -> Result<()>
 where
     P: AsRef<Path>,
 {
     // Check if output file already exists.
     let dir = dir.as_ref();
     let zip_path = dir.with_extension("cbz");
-    if !overwrite && zip_path.exists() {
+    if !args.overwrite && zip_path.exists() {
         print!(
             "{} {} already exists. Overwrite? [y/N] ",
             "WARNING:".yellow().bold(),
@@ -181,7 +185,7 @@ where
     }
 
     // Check directory for images, non images and excluded files.
-    let (imgs, non_imgs, excluded) = check_dir(dir, verify)?;
+    let (imgs, non_imgs, excluded) = check_dir(dir, args.verify)?;
 
     if !non_imgs.is_empty() {
         println!("Found {} non-images/unsupported images...", non_imgs.len());
@@ -201,7 +205,7 @@ where
     for (idx, img) in imgs.iter().enumerate() {
         let buf = fs::read(&img.path)
             .with_context(|| format!("Failed to read file {}", img.path.display()))?;
-        let file_name = if no_rename {
+        let file_name = if args.no_rename {
             img.path
                 .file_name()
                 .unwrap_or_default()
@@ -238,7 +242,7 @@ where
         .with_context(|| format!("Failed to finalize {}", zip_path.display()))?;
 
     // Delete directory.
-    if delete {
+    if args.delete {
         println!("Deleting original files and directory...");
         fs::remove_dir_all(dir)
             .with_context(|| format!("Failed to remove directory {}", dir.display()))?;
@@ -251,15 +255,9 @@ where
 fn main() {
     let args = Args::parse();
 
-    for dir in args.dirs {
+    for dir in &args.dirs {
         println!("Processing {}...", dir.display());
-        if let Err(e) = create_cbz(
-            dir,
-            args.no_rename,
-            args.delete,
-            args.verify,
-            args.overwrite,
-        ) {
+        if let Err(e) = create_cbz(dir, &args) {
             eprintln!("{} {e:#}", "ERROR:".red().bold());
         }
     }
