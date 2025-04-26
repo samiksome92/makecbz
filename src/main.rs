@@ -1,3 +1,6 @@
+//! Creates a cbz from provided directory(s) after checking for valid image files.
+//!
+//! Optionally deletes the original files and directories.
 use anyhow::{Context, Result};
 use clap::Parser;
 use colored::Colorize;
@@ -21,12 +24,13 @@ const FORMATS: [ImageFormat; 4] = [
 /// Excluded file names.
 const EXCLUDED_FILES: [&str; 1] = ["ComicInfo.xml"];
 
+/// Command line arguments.
 #[derive(Parser, Debug)]
 #[expect(
     clippy::struct_excessive_bools,
     reason = "Bools represent command line switches"
 )]
-#[command(version, about, long_about=None)]
+#[command(version, about=None, long_about=None)]
 struct Args {
     #[arg(required = true, help = "Directory(s) containing images")]
     dirs: Vec<PathBuf>,
@@ -113,10 +117,15 @@ where
     let mut non_imgs = Vec::new();
     let mut excluded = Vec::new();
     let paths = get_paths(dir)?;
-    let bar = ProgressBar::new(paths.len() as u64);
+    let bar = ProgressBar::new(
+        paths
+            .len()
+            .try_into()
+            .context("Failed to set progress bar length")?,
+    );
     bar.set_style(
         ProgressStyle::with_template("Verifying files {bar:40.white/white.dim} {pos}/{len}")
-            .unwrap()
+            .context("Failed to set progress bar style")?
             .progress_chars("━╸━"),
     );
     for path in paths {
@@ -131,11 +140,21 @@ where
         ) {
             excluded.push(path);
         } else {
-            match check_file(&path, verify)? {
-                Some(image_info) => {
-                    imgs.push(image_info);
-                }
-                None => {
+            match check_file(&path, verify) {
+                Ok(image_info) => match image_info {
+                    Some(image_info) => {
+                        imgs.push(image_info);
+                    }
+                    None => {
+                        non_imgs.push(path);
+                    }
+                },
+                Err(e) => {
+                    if verify {
+                        bar.println(format!("{} {e:#}", "[ERROR]".red().bold()));
+                    } else {
+                        eprintln!("{} {e:#}", "[ERROR]".red().bold());
+                    }
                     non_imgs.push(path);
                 }
             }
@@ -147,6 +166,7 @@ where
     }
     if verify {
         bar.finish();
+        eprintln!(); // TODO: indicatif has a bug where final newline is not printed. (https://github.com/console-rs/indicatif/issues/695)
     }
 
     Ok((imgs, non_imgs, excluded))
@@ -255,10 +275,13 @@ where
 fn main() {
     let args = Args::parse();
 
-    for dir in &args.dirs {
+    for (i, dir) in args.dirs.iter().enumerate() {
+        if i > 0 {
+            println!();
+        }
         println!("Processing {}...", dir.display());
         if let Err(e) = create_cbz(dir, &args) {
-            eprintln!("{} {e:#}", "ERROR:".red().bold());
+            eprintln!("{} {e:#}", "[ERROR]".red().bold());
         }
     }
 }
