@@ -1,17 +1,19 @@
 //! Creates a cbz from provided directory(s) after checking for valid image files.
 //!
 //! Optionally deletes the original files and directories.
-use anyhow::{Context, Result};
-use clap::Parser;
-use colored::Colorize;
-use image::{ImageFormat, ImageReader};
-use indicatif::{ProgressBar, ProgressStyle};
 use std::{
     cmp::max,
     fs,
     io::{self, Write},
     path::{Path, PathBuf},
+    process::ExitCode,
 };
+
+use anyhow::{Context, Result};
+use clap::Parser;
+use colored::Colorize;
+use image::{ImageFormat, ImageReader};
+use indicatif::{ProgressBar, ProgressStyle};
 use zip::{ZipWriter, write::SimpleFileOptions};
 
 /// Supported image formats.
@@ -112,7 +114,7 @@ fn check_dir<P>(dir: P, verify: bool) -> Result<(Vec<ImageInfo>, Vec<PathBuf>, V
 where
     P: AsRef<Path>,
 {
-    println!("Checking directory...");
+    println!("Checking directory ...");
     let mut imgs = Vec::new();
     let mut non_imgs = Vec::new();
     let mut excluded = Vec::new();
@@ -140,21 +142,12 @@ where
         ) {
             excluded.push(path);
         } else {
-            match check_file(&path, verify) {
-                Ok(image_info) => match image_info {
-                    Some(image_info) => {
-                        imgs.push(image_info);
-                    }
-                    None => {
-                        non_imgs.push(path);
-                    }
-                },
-                Err(e) => {
-                    if verify {
-                        bar.println(format!("{} {e:#}", "[ERROR]".red().bold()));
-                    } else {
-                        eprintln!("{} {e:#}", "[ERROR]".red().bold());
-                    }
+            let image_info = check_file(&path, verify)?;
+            match image_info {
+                Some(image_info) => {
+                    imgs.push(image_info);
+                }
+                None => {
                     non_imgs.push(path);
                 }
             }
@@ -187,7 +180,7 @@ where
     if !args.overwrite && zip_path.exists() {
         print!(
             "{} {} already exists. Overwrite? [y/N] ",
-            "WARNING:".yellow().bold(),
+            "[WARNING]".yellow().bold(),
             zip_path.display()
         );
         io::stdout().flush().context("Failed to flush stdout")?;
@@ -208,7 +201,7 @@ where
     let (imgs, non_imgs, excluded) = check_dir(dir, args.verify)?;
 
     if !non_imgs.is_empty() {
-        println!("Found {} non-images/unsupported images...", non_imgs.len());
+        println!("Found {} non-images/unsupported images", non_imgs.len());
         for path in non_imgs {
             println!("\t{}", path.display());
         }
@@ -216,7 +209,7 @@ where
     }
 
     // Create cbz.
-    println!("Creating cbz...");
+    println!("Creating cbz ...");
     let mut zip = ZipWriter::new(
         fs::File::create(&zip_path)
             .with_context(|| format!("Failed to create file {}", zip_path.display()))?,
@@ -263,7 +256,7 @@ where
 
     // Delete directory.
     if args.delete {
-        println!("Deleting original files and directory...");
+        println!("Deleting original files and directory ...");
         fs::remove_dir_all(dir)
             .with_context(|| format!("Failed to remove directory {}", dir.display()))?;
     }
@@ -272,16 +265,20 @@ where
 }
 
 /// Parse command line arguments and call `create_cbz` for each provided directory.
-fn main() {
+fn main() -> ExitCode {
     let args = Args::parse();
 
+    let mut exit_code = ExitCode::SUCCESS;
     for (i, dir) in args.dirs.iter().enumerate() {
         if i > 0 {
             println!();
         }
-        println!("Processing {}...", dir.display());
+        println!("Processing {} ...", dir.display());
         if let Err(e) = create_cbz(dir, &args) {
             eprintln!("{} {e:#}", "[ERROR]".red().bold());
+            exit_code = ExitCode::FAILURE;
         }
     }
+
+    exit_code
 }
