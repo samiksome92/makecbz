@@ -126,7 +126,7 @@ where
             .context("Failed to set progress bar length")?,
     );
     bar.set_style(
-        ProgressStyle::with_template("Verifying files {bar:40.white/white.dim} {pos}/{len}")
+        ProgressStyle::with_template("Verifying files {bar:40./dim} {pos}/{len}")
             .context("Failed to set progress bar style")?
             .progress_chars("━╸━"),
     );
