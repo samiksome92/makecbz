@@ -126,9 +126,8 @@ where
             .context("Failed to set progress bar length")?,
     );
     bar.set_style(
-        ProgressStyle::with_template("Verifying files {bar:40./dim} {pos}/{len}")
-            .context("Failed to set progress bar style")?
-            .progress_chars("━╸━"),
+        ProgressStyle::with_template("Verifying files {bar:40} {pos}/{len}")
+            .context("Failed to set progress bar style")?,
     );
     for path in paths {
         if !path.is_file() {
@@ -176,7 +175,7 @@ where
 {
     // Check if output file already exists.
     let dir = dir.as_ref();
-    let zip_path = dir.with_extension("cbz");
+    let zip_path = dir.with_added_extension("cbz");
     if !args.overwrite && zip_path.exists() {
         print!(
             "{} {} already exists. Overwrite? [y/N] ",
